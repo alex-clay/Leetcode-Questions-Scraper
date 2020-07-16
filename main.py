@@ -13,6 +13,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.keys import Keys
 from utils import *
 import epub_writer
 
@@ -22,10 +23,11 @@ colorama.init(autoreset=True)
 # Setup Selenium Webdriver
 CHROMEDRIVER_PATH = r"./driver/chromedriver.exe"
 options = Options()
-options.headless = True
+options.headless = False
 # Disable Warning, Error and Info logs
 # Show only fatal errors
 options.add_argument("--log-level=3")
+options.add_argument("user-data-dir=C:\\Users\\Helios\\AppData\\Local\\Google\\Chrome\\User Data\\Default") # if not using Windows, change default Chorme user directory
 driver = webdriver.Chrome(executable_path=CHROMEDRIVER_PATH, options=options)
 
 
@@ -52,14 +54,77 @@ def download(problem_num, url, title, solution_slug):
         html = driver.page_source
         soup = bs4.BeautifulSoup(html, "html.parser")
 
-        # Construct HTML
+        # Construct HTML (title, problem, tags, hints, testcase, boilerplate code)
+        ## title - difficulty
         title_decorator = '*' * n
-        problem_title_html = title_decorator + f'<div id="title">{title}</div>' + '\n' + title_decorator
-        problem_html = problem_title_html + str(soup.find("div", {"class": "content__u3I1 question-content__JfgR"})) + '<br><br><hr><br>'
+        problem_title_html = title_decorator + f'<div id="title">{title} - ' + soup.find("div", {"class": "css-10o4wqw"}).contents[0].text + '</div>' + '\n' + title_decorator
+        ## problem
+        problem_html = str(soup.find("div", {"class": "content__u3I1 question-content__JfgR"}))
+        ## tags
+        tags_html = '<br><br><strong>Related Topics:</strong><br><br>' + ", ".join(map(lambda x: x.text, soup.find_all("span", {"class": "tag__2PqS"}))) + "<br><br>"
+        ## hints
+        hints_html = ""
+        hint_i = 1
+        for tag in soup.find_all("div", {"class": "css-isal7m"}):
+            if(tag.find("div", {"class": "header__f9p6"})):
+                hints_html += "<strong>Hint " + str(hint_i) + ":</strong><br>" + str(tag.contents[1]) + "<br>"
+                hint_i += 1
+        ## testcase + boilerplate code
+        boilerplate_html = ""
+        testcase_html = ""
+        menu_lang = driver.find_element_by_css_selector(".ant-select-selection")
+        visited_langs = []
+        current_lang = soup.find("div", {"class": "ant-select-selection-selected-value"})
+        while True:
+            # user events
+            actions = webdriver.ActionChains(driver)
+            actions.move_to_element(menu_lang).click(menu_lang)
+            for i in range(len(visited_langs)+1): 
+                actions.send_keys(Keys.ARROW_DOWN, Keys.RETURN)
+            actions.perform()
+
+            # recompile soup
+            html = driver.page_source
+            soup = bs4.BeautifulSoup(html, "html.parser")
+
+            current_lang = soup.find("div", {"class": "ant-select-selection-selected-value"})
+
+            ## if javascript write testcase (because only javascript can submit empty code and pass)
+            if(current_lang.text == "JavaScript"):
+                button_runcode = driver.find_element_by_class_name("runcode__1EDI")
+                webdriver.ActionChains(driver).move_to_element(button_runcode).click(button_runcode).perform()
+                
+                time.sleep(5) # recompile soup
+                html = driver.page_source
+                soup = bs4.BeautifulSoup(html, "html.parser")
+
+                if (soup.find("div", {"class": "css-ns34s0-Value e5i1odf2"})):
+                    testcase_html += "<strong>Testcase Input:</strong><br>"
+                    testcase_html += str(soup.find_all("div", {"class": "css-ns34s0-Value e5i1odf2"})[0])
+                    testcase_html += "<strong>Answer:</strong><br>"
+                    testcase_html += str(soup.find_all("div", {"class": "css-ns34s0-Value e5i1odf2"})[2]) + "<br><br>"
+                else:
+                    testcase_html += "<strong>ERROR: test case has error OR not found OR page too slow.</strong><br><br>"
+
+
+            # check end
+            if(current_lang.text in visited_langs):
+                break
+            visited_langs.append(current_lang.text)
+
+            # copy boilerplate code
+            boilerplate_html += "<strong>" + current_lang.text + ":</strong><br>"
+            for tag in soup.find_all("span", {"role": "presentation"}):
+                boilerplate_html += tag.text + "<br>"
+            boilerplate_html += "<br><br>"
+
+        end_html = '<br><br><hr><br>'
         
+        out_html = problem_title_html + problem_html + tags_html + hints_html + testcase_html + boilerplate_html + end_html
+
         # Append Contents to a HTML file
         with open("out.html", "ab") as f:
-            f.write(problem_html.encode(encoding="utf-8"))
+            f.write(out_html.encode(encoding="utf-8"))
         
         # create and append chapters to construct an epub
         c = epub.EpubHtml(title=title, file_name=f'chap_{problem_num}.xhtml', lang='hr')

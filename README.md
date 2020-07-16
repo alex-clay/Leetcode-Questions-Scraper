@@ -1,3 +1,17 @@
+# Changes in this fork VS original https://github.com/Bishalsarang/Leetcode-Questions-Scraper/
+
+Original out.html only had title & problem, this one adds more data:
+- difficulty
+- tags
+- hints
+- testcases
+- boilerplate code for all languages
+
+Added login authentication for downloading test cases. You must login once manually into the browser and save the login info.
+(assumes you're using Windows to get user data. if not, edit variable in "user-data-dir" in main.py to reflect proper directory of Chrome User Data)
+
+headless is turned to False in order to validate click actions
+
 # Leetcode Questions Scraper
 
 Leetcode Questions Scraper is a simple scrapper built on top of Selenium that fetches all the problems from leetcode and write as html and epub files.
